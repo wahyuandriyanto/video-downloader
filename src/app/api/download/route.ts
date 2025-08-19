@@ -9,21 +9,32 @@ interface YtDlpMetadata {
   entries?: YtDlpMetadata[];
 }
 
-// Helper ambil metadata
-async function getMetadata(url: string): Promise<YtDlpMetadata> {
+// Helper ambil metadata (dengan opsi cookies dari browser)
+async function getMetadata(url: string, useCookies = false): Promise<YtDlpMetadata> {
   return new Promise<YtDlpMetadata>((resolve, reject) => {
-    const proc = spawn("yt-dlp", ["--dump-json", url]);
-    let data = "";
+    const args = ["--dump-json", url];
 
+    if (useCookies) {
+      // Kalau dev di lokal, otomatis pakai Chrome cookies
+      args.unshift("--cookies-from-browser", "chrome");
+    }
+
+    const proc = spawn("yt-dlp", args);
+
+    let data = "";
     proc.stdout.on("data", (chunk) => {
       data += chunk.toString();
     });
 
+    let stderr = "";
     proc.stderr.on("data", (err) => {
-      console.error("yt-dlp error:", err.toString());
+      stderr += err.toString();
     });
 
-    proc.on("close", () => {
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        return reject(new Error(`yt-dlp exited with code ${code}: ${stderr}`));
+      }
       try {
         resolve(JSON.parse(data));
       } catch (e) {
@@ -42,12 +53,26 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // ambil metadata yt-dlp
-    const metadata = await getMetadata(url);
+    // coba tanpa cookies dulu
+    let metadata: YtDlpMetadata;
+    try {
+      metadata = await getMetadata(url, false);
+    } catch (err) {
+      console.warn("Gagal tanpa cookies, coba pakai cookies browser...");
+      metadata = await getMetadata(url, true);
+    }
+
     console.log("Metadata:", metadata);
 
     // kalau carousel Instagram → metadata.entries
     const item = metadata.entries ? metadata.entries[0] : metadata;
+
+    if (!item.url) {
+      return NextResponse.json(
+        { error: "No downloadable media found" },
+        { status: 404 }
+      );
+    }
 
     // dapatkan link langsung
     const fileUrl = item.url;
@@ -68,7 +93,11 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error("Download error:", error);
     return NextResponse.json(
-      { error: `Failed to download: ${error instanceof Error ? error.message : 'Unknown error'}` },
+      {
+        error: `Failed to download: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      },
       { status: 500 }
     );
   }

@@ -9,15 +9,16 @@ interface YtDlpMetadata {
   entries?: YtDlpMetadata[];
 }
 
-// Helper ambil metadata (dengan opsi cookies dari browser)
-async function getMetadata(url: string, useCookies = false): Promise<YtDlpMetadata> {
+// Helper ambil metadata
+async function getMetadata(url: string): Promise<YtDlpMetadata> {
   return new Promise<YtDlpMetadata>((resolve, reject) => {
-    const args = ["--dump-json", url];
-
-    if (useCookies) {
-      // Kalau dev di lokal, otomatis pakai Chrome cookies
-      args.unshift("--cookies-from-browser", "chrome");
-    }
+    const args = [
+      "--dump-json",
+      "--no-warnings",
+      "--no-check-certificate",
+      "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      url
+    ];
 
     const proc = spawn("yt-dlp", args);
 
@@ -53,14 +54,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // coba tanpa cookies dulu
-    let metadata: YtDlpMetadata;
-    try {
-      metadata = await getMetadata(url, false);
-    } catch (err) {
-      console.warn("Gagal tanpa cookies, coba pakai cookies browser...");
-      metadata = await getMetadata(url, true);
-    }
+    // ambil metadata yt-dlp
+    const metadata = await getMetadata(url);
+    console.log("Metadata received:", !!metadata);
 
     // kalau carousel Instagram → metadata.entries
     const item = metadata.entries ? metadata.entries[0] : metadata;

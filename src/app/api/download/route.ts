@@ -62,8 +62,6 @@ export async function GET(req: NextRequest) {
       metadata = await getMetadata(url, true);
     }
 
-    console.log("Metadata:", metadata);
-
     // kalau carousel Instagram → metadata.entries
     const item = metadata.entries ? metadata.entries[0] : metadata;
 

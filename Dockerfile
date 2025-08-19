@@ -1,12 +1,19 @@
 # Use Node.js 18 Alpine as base image
 FROM node:18-alpine
 
-# Install system dependencies including Python and yt-dlp
+# Install system dependencies
 RUN apk add --no-cache \
     python3 \
     py3-pip \
     ffmpeg \
-    && pip3 install --no-cache-dir yt-dlp
+    curl
+
+# Install yt-dlp without virtual environment
+RUN python3 -m pip install --break-system-packages --no-cache-dir --upgrade pip
+RUN python3 -m pip install --break-system-packages --no-cache-dir yt-dlp
+
+# Verify installation
+RUN yt-dlp --version
 
 # Set working directory
 WORKDIR /app
@@ -15,7 +22,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci --only=production && npm cache clean --force
 
 # Copy source code
 COPY . .
@@ -37,6 +44,7 @@ EXPOSE 3000
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
 # Start the application
 CMD ["npm", "start"]

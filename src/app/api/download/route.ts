@@ -9,16 +9,43 @@ interface YtDlpMetadata {
   entries?: YtDlpMetadata[];
 }
 
-// Helper ambil metadata
-async function getMetadata(url: string): Promise<YtDlpMetadata> {
+// Helper ambil metadata dengan berbagai strategi
+async function getMetadata(url: string, strategy = 0): Promise<YtDlpMetadata> {
   return new Promise<YtDlpMetadata>((resolve, reject) => {
-    const args = [
-      "--dump-json",
-      "--no-warnings",
-      "--no-check-certificate",
-      "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      url
-    ];
+    let args: string[] = [];
+    
+    // Strategi berbeda untuk bypass bot detection
+    switch (strategy) {
+      case 0: // Strategi dasar
+        args = [
+          "--dump-json",
+          "--no-warnings",
+          "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          url
+        ];
+        break;
+      case 1: // Dengan extractor args
+        args = [
+          "--dump-json",
+          "--no-warnings",
+          "--extractor-args", "youtube:skip=dash,hls",
+          "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          url
+        ];
+        break;
+      case 2: // Dengan format spesifik
+        args = [
+          "--dump-json",
+          "--no-warnings", 
+          "--format", "best[height<=720]",
+          "--user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15",
+          url
+        ];
+        break;
+      default:
+        reject(new Error("All strategies failed"));
+        return;
+    }
 
     const proc = spawn("yt-dlp", args);
 
@@ -54,9 +81,28 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // ambil metadata yt-dlp
-    const metadata = await getMetadata(url);
-    console.log("Metadata received:", !!metadata);
+    // Coba berbagai strategi untuk bypass bot detection
+    let metadata: YtDlpMetadata | null = null;
+    let lastError: Error | null = null;
+    
+    for (let strategy = 0; strategy <= 2; strategy++) {
+      try {
+        console.log(`Trying strategy ${strategy} for URL: ${url}`);
+        metadata = await getMetadata(url, strategy);
+        console.log(`Strategy ${strategy} succeeded`);
+        break;
+      } catch (error) {
+        console.log(`Strategy ${strategy} failed:`, error instanceof Error ? error.message : error);
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (strategy === 2) {
+          throw lastError; // Semua strategi gagal
+        }
+      }
+    }
+    
+    if (!metadata) {
+      throw new Error("Failed to get metadata with all strategies");
+    }
 
     // kalau carousel Instagram → metadata.entries
     const item = metadata.entries ? metadata.entries[0] : metadata;
